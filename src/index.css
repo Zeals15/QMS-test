@@ -1,0 +1,166 @@
+/* stylelint-disable at-rule-no-unknown */
+
+:root {
+  /* Color tokens stored as H S L triplets for easier alpha-aware usage: "H S% L%" */
+  --color-coral: 6 90% 66%; /* Primary Coral */
+  --color-navy: 218 75% 19%; /* Deep Navy */
+  --color-blue: 224 63% 33%; /* Accent Blue */
+  --color-gray: 240 16% 96%; /* Light Gray surface */
+
+  --bg-default: 0 0% 100%;
+  --text-default: 214 20% 8%;
+
+  /* Spacing / radius tokens */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Shadows */
+  --shadow-subtle: 0 2px 8px rgba(0,0,0,0.08);
+
+  /* Focus ring */
+  --focus-ring: 6 90% 60%; /* coral hue for focus ring (H S% L%) */
+
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: white;
+  color: rgb(33 53 71 / 1);
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto hsl(var(--focus-ring));
+  outline-offset: 2px;
+}
+
+/* Dark/light media queries can be added later for theme overrides */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+h1, h2, h3, h4, h5 {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Utility helper classes for design system primitives */
+.card {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
+  padding: 1.5rem;
+}
+
+.focus-ring {
+  box-shadow: 0 0 0 4px rgba(244,98,90,0.12);
+}
+
+/* Login page specific styles - fallback styling that doesn't rely on Tailwind */
+.login-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+}
+.login-left {
+  flex: 1 1 50%;
+  background: linear-gradient(135deg, hsl(var(--color-coral)) 0%, hsl(var(--color-blue)) 100%);
+  color: white;
+  padding: 4rem 3rem;
+  display: flex;
+  align-items: center;
+}
+.login-left .brand {
+  max-width: 560px;
+}
+.login-left h1 {
+  font-size: 2.25rem;
+  margin: 0 0 0.5rem 0;
+}
+.login-left p { opacity: 0.95; }
+.login-left .features { margin-top: 1.25rem; display: grid; gap: 0.75rem; }
+.feature-pill { background: rgba(255,255,255,0.08); padding: 0.75rem 1rem; border-radius: 0.5rem; }
+
+.login-right {
+  flex: 1 1 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 30px rgba(16,24,40,0.06);
+  padding: 2rem;
+}
+.auth-card h2 { color: hsl(var(--color-navy)); margin-bottom: 0.75rem; }
+.form-row { margin-bottom: 1rem; }
+.input-field { width: 100%; padding: 0.75rem 0.85rem; border: 1px solid rgba(15,23,42,0.06); border-radius: 0.5rem; font-size: 0.95rem; }
+.input-field:focus { outline: none; box-shadow: 0 0 0 4px rgba(244,98,90,0.12); border-color: hsl(var(--color-coral)); }
+.actions { display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem; }
+.btn-primary { background: hsl(var(--color-coral)); color: white; border: none; padding: 0.6rem 1rem; border-radius: 0.5rem; cursor: pointer; font-weight:600; }
+.btn-primary:hover { filter: brightness(0.95); }
+.link-coral { color: hsl(var(--color-coral)); text-decoration: none; }
+
+/* Enforce light, readable form controls to avoid dark/black backgrounds from UA or OS dark mode */
+input, textarea, select {
+  background: #ffffff;
+  color: rgb(17 24 39 / 1);
+  border: 1px solid rgba(15,23,42,0.06);
+  border-radius: 0.5rem;
+}
+
+/* Autofill override for WebKit-based browsers */
+input:-webkit-autofill, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  -webkit-text-fill-color: rgb(17 24 39 / 1) !important;
+}
+
+@media (max-width: 768px) {
+  .login-root { flex-direction: column; }
+  .login-left { display: none; }
+  .login-right { padding: 2rem; }
+}
