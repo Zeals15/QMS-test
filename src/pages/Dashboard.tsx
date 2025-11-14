@@ -5,7 +5,7 @@ import { FileText, BarChart2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
-type QuotationItem = { product_name?: string };
+type QuotationItem = { product_name?: string; product?: { name?: string }; name?: string; product_title?: string };
 
 type Q = {
   id: number;
@@ -16,6 +16,9 @@ type Q = {
   created_at: string;
   items?: QuotationItem[];
   product_summary?: string;
+  salesperson?: string | { name?: string } | null;
+  sales_person?: string | { name?: string } | null;
+  meta?: Record<string, any>;
 };
 
 interface MetricCardProps {
@@ -67,23 +70,19 @@ export default function Dashboard() {
   const [loadingRecent, setLoadingRecent] = useState(false);
 
   // control polling
-  const pollingIntervalMs = 30000; // 30 seconds (adjust as needed)
+  const pollingIntervalMs = 30000; // 30 seconds
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // initial load
     loadAll();
 
-    // start poll
     pollRef.current = window.setInterval(() => {
-      loadStats();    // only stats frequently
-      loadRecent();   // refresh recent
+      loadStats();
+      loadRecent();
     }, pollingIntervalMs);
 
     return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-      }
+      if (pollRef.current) clearInterval(pollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -92,13 +91,11 @@ export default function Dashboard() {
     await Promise.all([loadStats(), loadRecent()]);
   }
 
-  // Try to fetch server-side computed stats; if not available, compute from full list
+  // Try server-side stats (api.getStats), fallback to computing from quotations
   async function loadStats() {
     try {
-      // if api exposes a dedicated stats endpoint
-      if (api.getQuotationStats) {
-        const s = await api.getQuotationStats();
-        // expected shape: { total, active, pendingReview, averageValue }
+      if (typeof (api as any).getStats === 'function') {
+        const s = await (api as any).getStats();
         setTotalQuotations(Number(s.total ?? 0));
         setActiveQuotations(Number(s.active ?? 0));
         setPendingReview(Number(s.pendingReview ?? 0));
@@ -106,11 +103,9 @@ export default function Dashboard() {
         return;
       }
     } catch (err) {
-      // ignore and fallback to compute from full list
-      console.warn('getQuotationStats failed, will fallback to compute from full list', err);
+      console.warn('api.getStats failed, will fallback to compute from full list', err);
     }
 
-    // fallback: fetch full quotations and compute
     try {
       const all: Q[] = await api.getQuotations();
       computeAndSetStats(all || []);
@@ -124,7 +119,6 @@ export default function Dashboard() {
     const active = list.filter(q => q.status && q.status.toLowerCase().includes('approved')).length;
     const pending = list.filter(q => q.status && q.status.toLowerCase().includes('pending')).length;
 
-    // average value: parse numbers safely
     const values = list.map(q => {
       const v = typeof q.total_value === 'number' ? q.total_value : Number(String(q.total_value || '0').replace(/[^0-9.-]+/g, ''));
       return Number.isFinite(v) ? v : 0;
@@ -140,15 +134,13 @@ export default function Dashboard() {
   async function loadRecent() {
     setLoadingRecent(true);
     try {
-      const data: Q[] = await api.getQuotations();
-      // sort by created_at desc (try to parse dates), then slice top 5
+      const data: Q[] = await api.getQuotations(); // you also have getRecentQuotations if preferred
       const sorted = (data || []).slice().sort((a, b) => {
         const ta = new Date(a.created_at).getTime() || 0;
         const tb = new Date(b.created_at).getTime() || 0;
         return tb - ta;
       });
       setRecent(sorted.slice(0, 5));
-      // if stats not set yet, compute from full list
       if (totalQuotations === null) computeAndSetStats(data || []);
     } catch (err) {
       console.error(err);
@@ -158,15 +150,59 @@ export default function Dashboard() {
     }
   }
 
-  // small helper for product list (copied from your Quotation page)
+  // product helper - used in table (prevents unused var warnings)
   function productListText(row: Q) {
     if (row.items && row.items.length) {
-      const names = row.items.map((i) => i.product_name || '').filter(Boolean);
+      const names = row.items.map((i: any) => {
+        if (!i) return '';
+        if (typeof i.product_name === 'string' && i.product_name.trim()) return i.product_name.trim();
+        if (i.product && typeof i.product.name === 'string' && i.product.name.trim()) return i.product.name.trim();
+        if (typeof i.name === 'string' && i.name.trim()) return i.name.trim();
+        if (typeof i.product_title === 'string' && i.product_title.trim()) return i.product_title.trim();
+        if (typeof i === 'string' && i.trim()) return i.trim();
+        try {
+          const j = JSON.stringify(i);
+          if (j && j !== '{}' && j.length < 80) return j;
+        } catch (_) {}
+        return '';
+      }).filter(Boolean);
       if (!names.length) return '-';
       if (names.length <= 2) return names.join(', ');
       return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
     }
     if (row.product_summary) return row.product_summary;
+    return '-';
+  }
+
+  // salesperson helper - used in dashboard recent table
+  function salespersonText(row: Q) {
+    const anyRow = row as any;
+    const candidates = [
+      anyRow.salesperson,
+      anyRow.sales_person,
+      anyRow.salesperson_name,
+      anyRow.sales_person_name,
+      anyRow.salesperson?.name,
+      anyRow.sales_person?.name,
+      anyRow.sales_personnel,
+      anyRow.sales_personnel?.name,
+      anyRow.sales_rep,
+      anyRow.sales_rep?.name,
+      anyRow.owner,
+      anyRow.owner?.name,
+    ];
+
+    for (const c of candidates) {
+      if (c == null) continue;
+      if (typeof c === 'string' && c.trim()) return c.trim();
+      if (typeof c === 'object' && c && typeof c.name === 'string' && c.name.trim()) return c.name.trim();
+    }
+
+    if (anyRow.meta && typeof anyRow.meta === 'object') {
+      const m = anyRow.meta.salesperson || anyRow.meta.sales_person || anyRow.meta.owner;
+      if (typeof m === 'string' && m.trim()) return m.trim();
+      if (m && typeof m.name === 'string' && m.name.trim()) return m.name.trim();
+    }
     return '-';
   }
 
@@ -178,7 +214,6 @@ export default function Dashboard() {
     day: 'numeric'
   });
 
-  // UI labels for metrics (show loading placeholders)
   const showOrLoading = (val: number | null, formatter?: (n:number)=>string) => {
     if (val === null) return '—';
     return formatter ? formatter(val) : String(val);
@@ -187,19 +222,13 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="space-y-6 p-6">
-        {/* Welcome Header */}
         <div className="rounded-2xl bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-600 p-8">
           <h1 className="text-2xl font-semibold text-white mb-2">Welcome to Prayosha Automation</h1>
           <p className="text-white/90">Professional Quotation Management System</p>
-          <div className="text-sm mt-4 text-white/80">
-            Manage your quotations efficiently and professionally
-          </div>
-          <div className="text-sm mt-2 text-white/80">
-            Today is {formattedDate}
-          </div>
+          <div className="text-sm mt-4 text-white/80">Manage your quotations efficiently and professionally</div>
+          <div className="text-sm mt-2 text-white/80">Today is {formattedDate}</div>
         </div>
 
-        {/* Primary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard label="Total Quotations" value={showOrLoading(totalQuotations)} subtext="+18.7% increase from last month" accentColor="yellow" />
           <MetricCard label="Active Quotations" value={showOrLoading(activeQuotations)} subtext="success rate" accentColor="green" />
@@ -207,7 +236,6 @@ export default function Dashboard() {
           <MetricCard label="Average Value" value={averageValue === null ? '—' : `₹${Number(averageValue).toLocaleString()}`} subtext="monthly average" accentColor="blue" />
         </div>
 
-        {/* secondary cards retained (static or you can wire similarly) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard label="Pending Approval" value="1" subtext="Awaiting review" accentColor="yellow" />
           <MetricCard label="Approved Today" value="0" subtext="Ready to send" accentColor="green" />
@@ -215,8 +243,6 @@ export default function Dashboard() {
           <MetricCard label="Conversion Rate" value="0%" subtext="+8% improvement" accentColor="purple" />
         </div>
 
-        {/* ... keep the rest of your dashboard and recent table below (unchanged) */}
-        {/* Call to Action */}
         <div className="rounded-2xl bg-gradient-to-r from-rose-500 to-rose-400 p-8 text-white">
           <h2 className="text-xl font-semibold mb-2">See the System in Action</h2>
           <p className="text-white/90 mb-4">Preview a sample quotation with professional formatting and layout</p>
@@ -240,7 +266,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Recent Quotations */}
           <div className="lg:col-span-3">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Recent Quotations</h3>
@@ -253,6 +278,8 @@ export default function Dashboard() {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Quote ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Customer</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Products</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Salesperson</th>
                     <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider">Actions</th>
@@ -262,13 +289,13 @@ export default function Dashboard() {
                 <tbody className="divide-y divide-gray-100">
                   {loadingRecent && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-6 text-center text-sm">Loading recent quotations...</td>
+                      <td colSpan={7} className="px-6 py-6 text-center text-sm">Loading recent quotations...</td>
                     </tr>
                   )}
 
                   {!loadingRecent && recent && recent.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-6 text-center text-sm">No recent quotations</td>
+                      <td colSpan={7} className="px-6 py-6 text-center text-sm">No recent quotations</td>
                     </tr>
                   )}
 
@@ -276,7 +303,9 @@ export default function Dashboard() {
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm">{r.quotation_no}</td>
                       <td className="px-6 py-4 text-sm">{r.customer_name}</td>
-                      <td className="px-6 py-4 text-sm text-right">₹{Number(r.total_value).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-sm">{productListText(r)}</td>
+                      <td className="px-6 py-4 text-sm">{salespersonText(r)}</td>
+                      <td className="px-6 py-4 text-sm text-right">₹{Number(String(r.total_value || '0').replace(/[^0-9.-]+/g, '') || 0).toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           r.status?.toLowerCase().includes('pending') ? 'bg-yellow-100 text-yellow-800' :
@@ -299,7 +328,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Help Section */}
         <div className="bg-rose-100 rounded-lg p-4">
           <h3 className="text-rose-700 font-semibold mb-1">Need Help?</h3>
           <p className="text-rose-600 text-sm">Contact support for assistance</p>

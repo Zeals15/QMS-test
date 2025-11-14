@@ -1,3 +1,4 @@
+// src/App.tsx
 import { type ReactElement } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
@@ -9,6 +10,10 @@ import Customers from "./pages/Customers";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
+
+// new imports (add these lines)
+import QuotationView from "./pages/QuotationView";
+import QuotationEdit from "./pages/QuotationEdit";
 
 function Protected({ children }: { children: ReactElement }) {
   const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
@@ -23,6 +28,8 @@ export default function App() {
 
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/quotations" element={<Protected><Quotations /></Protected>} />
+      <Route path="/quotations/:id" element={<Protected><QuotationView /></Protected>} />
+      <Route path="/quotations/:id/edit" element={<Protected><QuotationEdit /></Protected>} />
       <Route path="/create-quotation" element={<Protected><CreateQuotation /></Protected>} />
       <Route path="/products" element={<Protected><Products /></Protected>} />
       <Route path="/customers" element={<Protected><Customers /></Protected>} />
