@@ -190,21 +190,24 @@ async function ensureUsersTable() {
     await conn.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(100) UNIQUE,
+        username VARCHAR(100),
         email VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
-        password_hash VARCHAR(255),
+        password_hash VARCHAR(255) NOT NULL,
         phone VARCHAR(50),
         position VARCHAR(100),
-        role VARCHAR(50) DEFAULT 'user',
+        role VARCHAR(50) NOT NULL DEFAULT 'user',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_users_email_name (email, name)
+        UNIQUE KEY uq_users_email (email),
+        UNIQUE KEY uq_users_username (username)
       ) ENGINE=INNODB;
     `);
   } finally {
     if (conn) await conn.release();
   }
 }
+
 
 async function getNextRunningNumber(conn, fyCode, initials) {
   const prefix = `QT/${fyCode}/${initials}/`;
