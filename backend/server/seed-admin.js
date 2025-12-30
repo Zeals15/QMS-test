@@ -1,6 +1,6 @@
 // server/seed-admin.js
 require('dotenv').config();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const mysql = require('mysql2/promise');
 
 (async () => {

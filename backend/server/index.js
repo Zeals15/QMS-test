@@ -4,7 +4,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const db = require('./db'); // must expose getConnection() and endPool()
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const http = require('http');
