@@ -258,9 +258,9 @@ async function ensureQuotationsTable() {
     `);
 
     const schema =
-  process.env.MYSQLDATABASE ||
-  process.env.MYSQL_DATABASE ||
-  'railway';
+      process.env.MYSQLDATABASE ||
+      process.env.MYSQL_DATABASE ||
+      'railway';
     const table = 'quotations';
     const [cols] = await conn.query(
       `SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = ?`,
@@ -288,7 +288,9 @@ async function ensureQuotationsTable() {
       { name: 'customer_email', def: 'customer_email VARCHAR(255)' },
       { name: 'customer_address', def: 'customer_address TEXT' },
       { name: 'customer_gst', def: 'customer_gst VARCHAR(64)' },
-      { name: 'reissued_from_id', def: 'reissued_from_id INT DEFAULT NULL' }
+      { name: 'reissued_from_id', def: 'reissued_from_id INT DEFAULT NULL' },
+      { name: 'payment_terms', def: 'payment_terms TEXT DEFAULT NULL' }
+
     ];
 
     for (const reqCol of required) {
@@ -302,7 +304,7 @@ async function ensureQuotationsTable() {
       }
     }
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -323,7 +325,7 @@ async function ensureCustomersTable() {
       ) ENGINE=INNODB;
     `);
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -345,7 +347,7 @@ async function ensureProductsTable() {
       ) ENGINE=INNODB;
     `);
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -369,7 +371,7 @@ async function ensureCustomerLocationsTable() {
       ) ENGINE=INNODB;
     `);
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -392,7 +394,7 @@ async function ensureCustomerContactsTable() {
       ) ENGINE=INNODB;
     `);
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -412,12 +414,12 @@ async function ensureNotificationsTable() {
       ) ENGINE=INNODB;
     `);
 
-   
+
 
     const schema =
-  process.env.MYSQLDATABASE ||
-  process.env.MYSQL_DATABASE ||
-  'railway';
+      process.env.MYSQLDATABASE ||
+      process.env.MYSQL_DATABASE ||
+      'railway';
     const [idxRows] = await conn.query(
       `SELECT COUNT(*) AS cnt 
       FROM information_schema.statistics
@@ -431,7 +433,7 @@ async function ensureNotificationsTable() {
       await conn.query(`CREATE INDEX idx_notifications_created_at ON notifications (created_at)`);
     }
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -497,6 +499,60 @@ async function ensureQuotationFollowupsTable() {
 }
 
 
+async function ensureQuotationDecisionsTable() {
+  let conn;
+  try {
+    conn = await db.getConnection();
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS quotation_decisions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        quotation_id INT NOT NULL,
+        decision ENUM('won','lost') NOT NULL,
+        comment TEXT NULL,
+        decided_by VARCHAR(255),
+        decided_at DATETIME NOT NULL,
+        FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
+        INDEX idx_qd_quotation (quotation_id)
+      ) ENGINE=INNODB;
+    `);
+  } finally {
+    if (conn) await conn.release();
+  }
+}
+
+async function ensureAppSettingsTable() {
+  let conn;
+  try {
+    conn = await db.getConnection();
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id INT PRIMARY KEY,
+        company_name VARCHAR(255),
+        company_address TEXT,
+        contact_email VARCHAR(255),
+        contact_phone VARCHAR(50),
+        invoice_prefix VARCHAR(20),
+        invoice_next_seq INT DEFAULT 1,
+        smtp_host VARCHAR(255),
+        smtp_port INT,
+        smtp_user VARCHAR(255),
+        smtp_from VARCHAR(255),
+        enforce_strong_password TINYINT DEFAULT 0,
+        logo_data_url LONGTEXT
+      ) ENGINE=INNODB;
+    `);
+
+    // Ensure singleton row
+    await conn.query(
+      `INSERT IGNORE INTO app_settings (id) VALUES (1)`
+    );
+  } finally {
+    if (conn) await conn.release();
+  }
+}
+
+
+
 // ---------- DB schema initialization (RUN ONCE AT STARTUP) ----------
 
 
@@ -510,8 +566,10 @@ async function ensureQuotationFollowupsTable() {
     await ensureProductsTable();
     await ensureQuotationsTable();
     await ensureQuotationFollowupsTable();
+    await ensureQuotationDecisionsTable();
     await ensureQuotationVersionsTable();
-    
+    await ensureAppSettingsTable();
+
     await ensureNotificationsTable();
     console.log('Database schema ready');
   } catch (err) {
@@ -626,7 +684,7 @@ app.post('/api/login', async (req, res) => {
          LIMIT 1`,
         [email]
       );
-    } 
+    }
     /* ================= NON-ADMIN LOGIN ================= */
     else {
       if (!USERNAME_REGEX.test(username)) {
@@ -697,7 +755,7 @@ app.post('/api/login', async (req, res) => {
     console.error('Login error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'server error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -709,7 +767,7 @@ app.post('/api/register', async (req, res) => {
 
   let conn;
   try {
-    
+
     conn = await db.getConnection();
 
     const [existing] = await conn.query('SELECT id FROM users WHERE email = ? AND name = ? LIMIT 1', [email, name]);
@@ -741,7 +799,7 @@ app.post('/api/register', async (req, res) => {
     console.error('Register error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'server error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -759,7 +817,7 @@ app.get('/api/me', authMiddleware, (req, res) => {
 app.get('/api/stats', async (req, res) => {
   let conn;
   try {
-    
+
     conn = await db.getConnection();
     const [rows] = await conn.query('SELECT COUNT(*) as total FROM quotations WHERE is_deleted = 0');
     const total = (rows && rows[0] && rows[0].total) ? rows[0].total : 0;
@@ -768,7 +826,7 @@ app.get('/api/stats', async (req, res) => {
     console.error('Error fetching stats:', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -864,7 +922,7 @@ app.get('/api/quotations/recent', authMiddleware, async (req, res) => {
     console.error('Error fetching recent quotations:', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { conn.release(); } catch {}
+    if (conn) try { conn.release(); } catch { }
   }
 });
 
@@ -902,10 +960,7 @@ app.get('/api/quotations', authMiddleware, async (req, res) => {
           CURRENT_DATE
         ) AS remaining_days,
 
-        DATEDIFF(
-  DATE_ADD(q.quotation_date, INTERVAL q.validity_days DAY),
-  CURRENT_DATE
-) AS remaining_days,
+  
 
 CASE
   WHEN DATEDIFF(
@@ -990,16 +1045,16 @@ WHERE q.is_deleted = 0
         version: r.version,
         total_value: r.total_value,
         created_at: r.created_at,
-         payment_terms: r.payment_terms || null,
+        payment_terms: r.payment_terms || null,
 
         next_followup_date: r.next_followup_date,
 
         validity: {
-         quotation_date: r.quotation_date,
-         validity_days: r.validity_days,
-         valid_until: r.valid_until,
-         remaining_days: r.remaining_days,
-         validity_state: r.validity_state
+          quotation_date: r.quotation_date,
+          validity_days: r.validity_days,
+          valid_until: r.valid_until,
+          remaining_days: r.remaining_days,
+          validity_state: r.validity_state
         },
         items,
 
@@ -1032,7 +1087,7 @@ WHERE q.is_deleted = 0
     console.error('Error fetching quotations:', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { conn.release(); } catch {}
+    if (conn) try { conn.release(); } catch { }
   }
 });
 
@@ -1078,7 +1133,7 @@ async function handleNextQuotation(req, res) {
     res.status(500).json({ error: 'server_error' });
   } finally {
     if (conn) {
-      try { await conn.release(); } catch {}
+      try { await conn.release(); } catch { }
     }
   }
 }
@@ -1088,14 +1143,14 @@ app.get('/api/quotations/next', authMiddleware, handleNextQuotation);
 
 // ---------- Socket.IO bootstrap ----------
 async function createServerAndIO() {
-  
+
 
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
     cors: {
-  origin: allowedOrigins.length ? allowedOrigins : false,
-  methods: ['GET', 'POST']
-},
+      origin: allowedOrigins.length ? allowedOrigins : false,
+      methods: ['GET', 'POST']
+    },
     path: '/socket.io'
   });
 
@@ -1198,9 +1253,9 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
     const itemsJson = items ? JSON.stringify(items) : null;
 
     const normalizedPaymentTerms =
-  typeof payment_terms === "string" && payment_terms.trim()
-    ? payment_terms.trim()
-    : null;
+      typeof payment_terms === "string" && payment_terms.trim()
+        ? payment_terms.trim()
+        : null;
 
     /* -------------------- SALESPERSON -------------------- */
 
@@ -1321,37 +1376,37 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
 
     /* -------------------- GENERATE QUOTATION NO -------------------- */
     const [[sp]] = await conn.query(
-  'SELECT name FROM users WHERE id = ?',
-  [salespersonToSave]
-);
+      'SELECT name FROM users WHERE id = ?',
+      [salespersonToSave]
+    );
 
-if (!sp) {
-  throw new Error('Salesperson not found for quotation numbering');
-}
+    if (!sp) {
+      throw new Error('Salesperson not found for quotation numbering');
+    }
 
-const initials = sp.name
-  .trim()
-  .split(/\s+/)
-  .map(p => p[0])
-  .join('')
-  .toUpperCase();
+    const initials = sp.name
+      .trim()
+      .split(/\s+/)
+      .map(p => p[0])
+      .join('')
+      .toUpperCase();
 
-const fyCode = getFinancialYearCode(
-  dbDate ? new Date(dbDate) : new Date()
-);
+    const fyCode = getFinancialYearCode(
+      dbDate ? new Date(dbDate) : new Date()
+    );
 
 
-const runningNo = await getNextRunningNumber(conn, fyCode, initials);
+    const runningNo = await getNextRunningNumber(conn, fyCode, initials);
 
-const quotation_no =
-  `QT/${fyCode}/${initials}/${String(runningNo).padStart(3, '0')}`;
+    const quotation_no =
+      `QT/${fyCode}/${initials}/${String(runningNo).padStart(3, '0')}`;
 
-const newId = ins.insertId;
+    const newId = ins.insertId;
 
-await conn.query(
-  'UPDATE quotations SET quotation_no = ? WHERE id = ?',
-  [quotation_no, newId]
-);
+    await conn.query(
+      'UPDATE quotations SET quotation_no = ? WHERE id = ?',
+      [quotation_no, newId]
+    );
     await conn.commit();
 
 
@@ -1367,7 +1422,7 @@ await conn.query(
     });
   } finally {
     if (conn) {
-      try { await conn.release(); } catch {}
+      try { await conn.release(); } catch { }
     }
   }
 });
@@ -1458,15 +1513,15 @@ app.get('/api/quotations/:id', authMiddleware, async (req, res) => {
     const rawItems = safeJsonParse(q.items, []);
     const items = Array.isArray(rawItems)
       ? rawItems.map(it => ({
-          product_id: it.product_id ?? null,
-          product_name: it.product_name ?? it.name ?? '—',
-          description: it.description ?? '',
-          qty: Number(it.qty ?? it.quantity ?? 0),
-          uom: it.uom ?? 'NOS',
-          discount_percent: Number(it.discount_percent ?? 0),
-          unit_price: Number(it.unit_price ?? it.price ?? 0),
-          tax_rate: Number(it.tax_rate ?? 0),
-        }))
+        product_id: it.product_id ?? null,
+        product_name: it.product_name ?? it.name ?? '—',
+        description: it.description ?? '',
+        qty: Number(it.qty ?? it.quantity ?? 0),
+        uom: it.uom ?? 'NOS',
+        discount_percent: Number(it.discount_percent ?? 0),
+        unit_price: Number(it.unit_price ?? it.price ?? 0),
+        tax_rate: Number(it.tax_rate ?? 0),
+      }))
       : [];
 
     /* ✅ PARSE CUSTOMER SNAPSHOT */
@@ -1498,15 +1553,15 @@ app.get('/api/quotations/:id', authMiddleware, async (req, res) => {
 
         payment_terms: q.payment_terms ?? null,
 
-         validity: {
-    quotation_date: q.quotation_date,
-    validity_days: q.validity_days,
-    valid_until: q.valid_until,
-    remaining_days: q.remaining_days,
-    validity_state: q.validity_state
-  },
+        validity: {
+          quotation_date: q.quotation_date,
+          validity_days: q.validity_days,
+          valid_until: q.valid_until,
+          remaining_days: q.remaining_days,
+          validity_state: q.validity_state
+        },
 
-        customer_snapshot: customerSnapshot,     
+        customer_snapshot: customerSnapshot,
 
         customer_name: q.company_name,
         customer_address: q.location_address || q.customer_address,
@@ -1527,29 +1582,29 @@ app.get('/api/quotations/:id', authMiddleware, async (req, res) => {
 
         customer: q.customer_id
           ? {
-              id: q.customer_id,
-              company_name: q.company_name,
-            }
+            id: q.customer_id,
+            company_name: q.company_name,
+          }
           : null,
 
         location: q.location_id
           ? {
-              id: q.location_id,
-              location_name: q.location_name,
-              address: q.location_address,
-              city: q.city,
-              state: q.state,
-              gstin: q.location_gstin,
-            }
+            id: q.location_id,
+            location_name: q.location_name,
+            address: q.location_address,
+            city: q.city,
+            state: q.state,
+            gstin: q.location_gstin,
+          }
           : null,
 
         contact: q.contact_id
           ? {
-              id: q.contact_id,
-              contact_name: q.contact_name,
-              phone: q.contact_phone,
-              email: q.contact_email,
-            }
+            id: q.contact_id,
+            contact_name: q.contact_name,
+            phone: q.contact_phone,
+            email: q.contact_email,
+          }
           : null,
       },
     });
@@ -1601,6 +1656,13 @@ app.post('/api/quotations/:id/reissue', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Source quotation not found' });
     }
 
+    // 🚫 Prevent double re-issue
+if (source.reissued_from_id) {
+  return res.status(409).json({
+    error: 'Quotation already re-issued',
+  });
+}
+
     if (source.validity_state !== 'expired') {
       return res.status(409).json({
         error: 'Only expired quotations can be re-issued',
@@ -1639,17 +1701,17 @@ app.post('/api/quotations/:id/reissue', authMiddleware, async (req, res) => {
       typeof source.items === 'string'
         ? source.items
         : JSON.stringify(source.items ?? []);
-    
+
 
     const customerSnapshotJson =
-  typeof source.customer_snapshot === 'string'
-    ? source.customer_snapshot
-    : JSON.stringify(source.customer_snapshot ?? {});    
+      typeof source.customer_snapshot === 'string'
+        ? source.customer_snapshot
+        : JSON.stringify(source.customer_snapshot ?? {});
 
 
     // 🧬 Clone quotation
-// 🧬 Clone quotation (NEW quotation)
-const [result] = await conn.query(
+    // 🧬 Clone quotation (NEW quotation)
+   const [result] = await conn.query(
   `
   INSERT INTO quotations (
     quotation_no,
@@ -1686,7 +1748,7 @@ const [result] = await conn.query(
     'pending',
     '1.0',
     0,
-    NULL,
+    ?,      
     NOW()
   )
   `,
@@ -1702,20 +1764,15 @@ const [result] = await conn.query(
     source.terms ?? null,
     source.notes ?? null,
     source.total_value ?? 0,
+    source.id
   ]
 );
 
-const newQuotationId = result.insertId;
 
-/* 🔒 MARK OLD QUOTATION AS REISSUED (CRITICAL) */
-await conn.query(
-  `
-  UPDATE quotations
-  SET reissued_from_id = ?
-  WHERE id = ?
-  `,
-  [newQuotationId, source.id]
-);
+    const newQuotationId = result.insertId;
+
+    /* 🔒 MARK OLD QUOTATION AS REISSUED (CRITICAL) */
+   
 
 
     await conn.commit();
@@ -1734,17 +1791,17 @@ await conn.query(
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   let conn;
   try {
-   
+
     conn = await db.getConnection();
     const userId = req.user?.id ?? null;
     const [rows] = await conn.query(
-  `SELECT id, uuid, title, description, url, user_id, created_at
+      `SELECT id, uuid, title, description, url, user_id, created_at
    FROM notifications
    WHERE user_id IS NULL OR user_id = ?
    ORDER BY created_at DESC
    LIMIT 200`,
-  [userId]
-);
+      [userId]
+    );
     const out = (rows || []).map(r => ({
       id: r.id,
       uuid: r.uuid,
@@ -1759,7 +1816,7 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
     console.error('Error fetching notifications:', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1772,7 +1829,7 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
 app.get('/api/customers', async (req, res) => {
   let conn;
   try {
-    
+
     conn = await db.getConnection();
     const [rows] = await conn.query('SELECT id, company_name, gstin, address, created_at FROM customers ORDER BY created_at DESC');
     res.json(rows);
@@ -1780,7 +1837,7 @@ app.get('/api/customers', async (req, res) => {
     console.error('customers GET error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1799,8 +1856,8 @@ app.post('/api/customers', async (req, res) => {
     const [result] = await conn.query(
       `INSERT INTO customers
        SET company_name = ?, gstin = ?, address = ?`,
-        [custName, gstin || null, address || null]
-      );
+      [custName, gstin || null, address || null]
+    );
 
     const [rows] = await conn.query(
       `SELECT id, company_name, gstin, address, created_at
@@ -1811,11 +1868,11 @@ app.post('/api/customers', async (req, res) => {
 
     res.status(201).json(rows[0]);
   } catch (err) {
-  console.error('create customer error:', err.sqlMessage || err.message || err);
-  res.status(500).json({
-    error: 'db error',
-    details: err.sqlMessage || err.message
-  });
+    console.error('create customer error:', err.sqlMessage || err.message || err);
+    res.status(500).json({
+      error: 'db error',
+      details: err.sqlMessage || err.message
+    });
   } finally {
     if (conn) conn.release();
   }
@@ -1873,7 +1930,7 @@ app.delete('/api/customers/:id', /* authMiddleware, */ async (req, res) => {
     console.error('delete customer error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1896,7 +1953,7 @@ app.get('/api/customers/:customerId/locations', async (req, res) => {
     console.error('get locations error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1936,7 +1993,7 @@ app.post('/api/customers/:customerId/locations', async (req, res) => {
     console.error('create location error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1976,7 +2033,7 @@ app.put('/api/customers/:customerId/locations/:locationId', async (req, res) => 
     console.error('update location error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -1986,7 +2043,7 @@ app.delete('/api/customers/:customerId/locations/:locationId', async (req, res) 
   const locationId = Number(req.params.locationId);
   try {
     conn = await db.getConnection();
-    
+
     // Soft delete: set is_active = 0
     const [result] = await conn.query(
       `UPDATE customer_locations 
@@ -2004,7 +2061,7 @@ app.delete('/api/customers/:customerId/locations/:locationId', async (req, res) 
     console.error('delete location error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2030,7 +2087,7 @@ app.get('/api/customer-locations/:locationId/contacts', async (req, res) => {
     console.error('get contacts error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -2081,7 +2138,7 @@ app.post('/api/customer-locations/:locationId/contacts', async (req, res) => {
     console.error('create contact error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -2131,7 +2188,7 @@ app.put('/api/customer-locations/:locationId/contacts/:contactId', async (req, r
     console.error('update contact error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -2159,7 +2216,7 @@ app.delete('/api/customer-locations/:locationId/contacts/:contactId', async (req
     console.error('delete contact error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -2178,7 +2235,7 @@ app.put('/api/customer-locations/:locationId/clear-primary', async (req, res) =>
     console.error('clear primary contacts error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2189,7 +2246,7 @@ app.get('/api/users', authMiddleware, async (req, res) => {
 
   let conn;
   try {
-    
+
     conn = await db.getConnection();
     const [rows] = await conn.query('SELECT id, username, email, name, phone, position, role, is_active, created_at FROM users ORDER BY created_at DESC');
     res.json(rows || []);
@@ -2197,14 +2254,14 @@ app.get('/api/users', authMiddleware, async (req, res) => {
     console.error('/api/users error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db_error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
 app.delete('/api/users/:id', authMiddleware, async (req, res) => {
   let conn;
   try {
-    
+
     const rawId = req.params.id;
     const id = sanitizeIdParam(rawId);
     if (!id) return res.status(400).json({ error: 'invalid id' });
@@ -2235,7 +2292,7 @@ app.delete('/api/users/:id', authMiddleware, async (req, res) => {
       const [delRes] = await conn.query('DELETE FROM users WHERE id = ?', [id]);
       const affected = delRes && (delRes.affectedRows != null) ? delRes.affectedRows : 0;
       try {
-        
+
         const notifUUID = `notif-user-force-delete-${id}-${Date.now()}`;
         const title = `User ${id} force-deleted`;
         const description = `User ${id} (${rows[0].email}) was force-deleted by ${req.user && (req.user.name || req.user.email) ? (req.user.name || req.user.email) : 'admin'}`;
@@ -2249,7 +2306,7 @@ app.delete('/api/users/:id', authMiddleware, async (req, res) => {
       const [delRes] = await conn.query('DELETE FROM users WHERE id = ?', [id]);
       const affected = delRes && (delRes.affectedRows != null) ? delRes.affectedRows : 0;
       try {
-        
+
         const notifUUID = `notif-user-delete-${id}-${Date.now()}`;
         const title = `User ${id} deleted`;
         const description = `User ${id} (${rows[0].email}) was deleted by ${req.user && (req.user.name || req.user.email) ? (req.user.name || req.user.email) : 'admin'}`;
@@ -2264,7 +2321,7 @@ app.delete('/api/users/:id', authMiddleware, async (req, res) => {
     console.error('DELETE /api/users/:id error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'server_error', message: 'Failed to delete user', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2281,35 +2338,35 @@ app.post('/api/users', authMiddleware, async (req, res) => {
     });
   }
 
- const { username, name, email, phone, position, role, password } = req.body || {};
+  const { username, name, email, phone, position, role, password } = req.body || {};
 
   if (!username || !email || !password) {
-  return res.status(400).json({
-    error: 'validation_error',
-    message: 'username, email and password are required'
-  });
-}
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'username, email and password are required'
+    });
+  }
 
-const USERNAME_REGEX =
-  /^(?=.*[A-Z])(?=.*[0-9])(?=.*[@_])[A-Za-z0-9@_]{4,100}$/;
+  const USERNAME_REGEX =
+    /^(?=.*[A-Z])(?=.*[0-9])(?=.*[@_])[A-Za-z0-9@_]{4,100}$/;
 
-if (!USERNAME_REGEX.test(username)) {
-  return res.status(400).json({
-    error: 'invalid_username_format',
-    message: 'Username must contain 1 capital letter, 1 number, and @ or _'
-  });
-}
+  if (!USERNAME_REGEX.test(username)) {
+    return res.status(400).json({
+      error: 'invalid_username_format',
+      message: 'Username must contain 1 capital letter, 1 number, and @ or _'
+    });
+  }
 
   let conn;
   try {
-    
+
     conn = await db.getConnection();
 
     // Check duplicate email
     const [existing] = await conn.query(
-  'SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1',
-  [email, username]
-);
+      'SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1',
+      [email, username]
+    );
 
     if (existing && existing.length > 0) {
       return res.status(409).json({
@@ -2344,7 +2401,7 @@ if (!USERNAME_REGEX.test(username)) {
       message: 'Failed to create user'
     });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2506,7 +2563,7 @@ app.put("/api/users/:id/status", authMiddleware, async (req, res) => {
 app.get('/api/products', async (req, res) => {
   let conn;
   try {
-    
+
     conn = await db.getConnection();
     const [rows] = await conn.query('SELECT * FROM products ORDER BY created_at DESC');
     res.json(rows);
@@ -2514,7 +2571,7 @@ app.get('/api/products', async (req, res) => {
     console.error('products error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2554,7 +2611,7 @@ app.post('/api/products', async (req, res) => {
     console.error('create product error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2577,7 +2634,7 @@ app.put('/api/products/:id', async (req, res) => {
     console.error('update product error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2592,7 +2649,7 @@ app.delete('/api/products/:id', async (req, res) => {
     console.error('delete product error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2667,18 +2724,18 @@ LIMIT 1`,
     const versionData = versionRows[0];
     const changeHistory = safeJsonParse(versionData.change_history, {});
     const items = Array.isArray(changeHistory.items) ? changeHistory.items : safeJsonParse(versionData.items, []);
-    
+
     return res.json({
       success: true,
       version: versionData.version,
       is_current: false,
       items: items,
-     totals: {
-  subtotal: Number(versionData.subtotal),
-  total_discount: Number(versionData.total_discount),
-  tax_total: Number(versionData.tax),
-  grand_total: Number(versionData.total)
-},
+      totals: {
+        subtotal: Number(versionData.subtotal),
+        total_discount: Number(versionData.total_discount),
+        tax_total: Number(versionData.tax),
+        grand_total: Number(versionData.total)
+      },
       comment: changeHistory.comment || null,
       changed_by: versionData.changed_by || '',
       changed_at: versionData.created_at,
@@ -2688,14 +2745,14 @@ LIMIT 1`,
     console.error('fetch specific version error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
-  });
+});
 
 
-  // Version
+// Version
 
-  // ---------- Get quotation version history (LIST) ----------
+// ---------- Get quotation version history (LIST) ----------
 // GET /api/quotations/:id/versions
 app.get('/api/quotations/:id/versions', authMiddleware, async (req, res) => {
   let conn;
@@ -2720,12 +2777,12 @@ app.get('/api/quotations/:id/versions', authMiddleware, async (req, res) => {
     if (role !== 'admin' && q.salesperson_id !== req.user.id) {
       return res.status(403).json({ error: 'forbidden' });
     }
-const [currentRows] = await conn.query(
-  'SELECT version FROM quotations WHERE id = ? LIMIT 1',
-  [id]
-);
+    const [currentRows] = await conn.query(
+      'SELECT version FROM quotations WHERE id = ? LIMIT 1',
+      [id]
+    );
 
-const currentVersion = currentRows?.[0]?.version || null;
+    const currentVersion = currentRows?.[0]?.version || null;
 
     // Fetch version history
     const [rows] = await conn.query(
@@ -2752,30 +2809,30 @@ ORDER BY qv.created_at DESC
     );
 
     const history = (rows || []).map(r => ({
-  ...r,
-  is_current: false,
-}));
+      ...r,
+      is_current: false,
+    }));
 
-// Inject current version at top
-if (currentVersion) {
-  history.unshift({
-    id: 0,
-    version: currentVersion,
-    is_current: true,
-    changed_by: 'Current',
-    changed_at: new Date(),
-    items_snapshot: null,
-    totals_snapshot: null,
-    comment: null,
-  });
-}
+    // Inject current version at top
+    if (currentVersion) {
+      history.unshift({
+        id: 0,
+        version: currentVersion,
+        is_current: true,
+        changed_by: 'Current',
+        changed_at: new Date(),
+        items_snapshot: null,
+        totals_snapshot: null,
+        comment: null,
+      });
+    }
 
-res.json(history);
+    res.json(history);
   } catch (err) {
     console.error('fetch version history error', err);
     res.status(500).json({ error: 'db error' });
   } finally {
-    if (conn) try { await conn.release(); } catch {}
+    if (conn) try { await conn.release(); } catch { }
   }
 });
 
@@ -2811,7 +2868,7 @@ app.get('/api/quotations/:id/decisions', authMiddleware, async (req, res) => {
     console.error('fetch decisions error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -2821,7 +2878,7 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const id = sanitizeIdParam(rawId);
   if (!id) return res.status(400).json({ error: 'invalid id' });
-  
+
 
   const {
     customer_name,
@@ -2830,7 +2887,7 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
     items,
     terms,
     notes,
-    
+
     status,
     salesperson_id,
     version,
@@ -2838,7 +2895,7 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
   } = req.body || {};
 
   try {
-    
+
     conn = await db.getConnection();
 
     const [rows] = await conn.query('SELECT * FROM quotations WHERE id = ? LIMIT 1', [id]);
@@ -2855,65 +2912,65 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: 'forbidden', message: 'You do not have permission to update this quotation' });
       }
     }
-     
-  const editableStatuses = ['draft', 'pending'];
 
- if (!editableStatuses.includes(String(existing.status).toLowerCase())) {
-  return res.status(409).json({
-    error: 'locked',
-    message: 'Quotation cannot be edited in this status'
-  });
- }
+    const editableStatuses = ['draft', 'pending'];
+
+    if (!editableStatuses.includes(String(existing.status).toLowerCase())) {
+      return res.status(409).json({
+        error: 'locked',
+        message: 'Quotation cannot be edited in this status'
+      });
+    }
     const itemsJson = (typeof items === 'string') ? items : (items ? JSON.stringify(items) : (existing.items ? JSON.stringify(existing.items) : null));
     const dbDate =
       normalizeDateForDb(quotation_date) ||
       normalizeDateForDb(existing.quotation_date);
-  const parsedItems =
-  Array.isArray(items)
-    ? items
-    : typeof items === 'string'
-      ? safeJsonParse(items, [])
-      : safeJsonParse(existing.items, []);
+    const parsedItems =
+      Array.isArray(items)
+        ? items
+        : typeof items === 'string'
+          ? safeJsonParse(items, [])
+          : safeJsonParse(existing.items, []);
 
-   const totals = calculateTotals(parsedItems);
+    const totals = calculateTotals(parsedItems);
 
-   const newVersion = bumpVersion(existing.version);
+    const newVersion = bumpVersion(existing.version);
 
-   const finalSalespersonId =
-  salesperson_id ?? existing.salesperson_id ?? req.user.id;
+    const finalSalespersonId =
+      salesperson_id ?? existing.salesperson_id ?? req.user.id;
 
-  const salespersonChanged =
-  Number(finalSalespersonId) !== Number(existing.salesperson_id);
+    const salespersonChanged =
+      Number(finalSalespersonId) !== Number(existing.salesperson_id);
 
-  //Re-fetch snapshot ONLY if changed
+    //Re-fetch snapshot ONLY if changed
 
- let salespersonPhone = existing.salesperson_phone;
- let salespersonEmail = existing.salesperson_email;
+    let salespersonPhone = existing.salesperson_phone;
+    let salespersonEmail = existing.salesperson_email;
 
-  if (salespersonChanged) {
-  const [userRows] = await conn.query(
-    'SELECT phone, email FROM users WHERE id = ?',
-    [finalSalespersonId]
-  );
-  const u = userRows && userRows[0] ? userRows[0] : {};
-  salespersonPhone = u.phone || null;
-  salespersonEmail = u.email || null;
- }
+    if (salespersonChanged) {
+      const [userRows] = await conn.query(
+        'SELECT phone, email FROM users WHERE id = ?',
+        [finalSalespersonId]
+      );
+      const u = userRows && userRows[0] ? userRows[0] : {};
+      salespersonPhone = u.phone || null;
+      salespersonEmail = u.email || null;
+    }
 
- // 🔍 DEBUG LOG — ADD HERE
- console.log('UPDATE QUOTATION TOTALS:', {
-  quotationId: id,
-  subtotal: totals.subtotal,
-  discount: totals.total_discount,
-  tax: totals.tax_total,
-  grandTotal: totals.grand_total,
-  itemsCount: parsedItems.length,
- });
+    // 🔍 DEBUG LOG — ADD HERE
+    console.log('UPDATE QUOTATION TOTALS:', {
+      quotationId: id,
+      subtotal: totals.subtotal,
+      discount: totals.total_discount,
+      tax: totals.tax_total,
+      grandTotal: totals.grand_total,
+      itemsCount: parsedItems.length,
+    });
 
-    
+
 
     const [r] = await conn.query(
-        `UPDATE quotations SET
+      `UPDATE quotations SET
         customer_name = ?,
         quotation_date = ?,
         validity_days = ?,
@@ -2931,7 +2988,7 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
         version = ?
        WHERE id = ?`,
       [
-         customer_name ?? existing.customer_name,
+        customer_name ?? existing.customer_name,
         dbDate,
         validity_days ?? existing.validity_days,
         itemsJson,
@@ -2950,24 +3007,24 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
       ]
     );
 
-  console.log('VERSION UPDATED:', {
+    console.log('VERSION UPDATED:', {
       quotationId: id,
       from: existing.version,
       to: newVersion
-});
+    });
 
     // Save version snapshot to quotation_versions table if version changed
     // Save OLD version snapshot before bumping to newVersion
-if (String(newVersion) !== String(existing.version)) {
-  const changedByUserId = req.user?.id ?? null;
+    if (String(newVersion) !== String(existing.version)) {
+      const changedByUserId = req.user?.id ?? null;
 
-  // extract major/minor from OLD version (example: "0.3")
-  const [major, minor] = String(existing.version)
-    .split('.')
-    .map(v => parseInt(v, 10) || 0);
+      // extract major/minor from OLD version (example: "0.3")
+      const [major, minor] = String(existing.version)
+        .split('.')
+        .map(v => parseInt(v, 10) || 0);
 
- await conn.query(
-  `INSERT INTO quotation_versions (
+      await conn.query(
+        `INSERT INTO quotation_versions (
     quotation_id,
     version_major,
     version_minor,
@@ -2980,23 +3037,23 @@ if (String(newVersion) !== String(existing.version)) {
     change_history,
     created_by
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  [
-    id,
-    major,
-    minor,
-    existing.version,
-   JSON.stringify(safeJsonParse(existing.items, [])),
-    existing.subtotal,
-    existing.total_discount ?? 0,
-    existing.tax_total,
-    existing.total_value,
-    JSON.stringify({
-      comment: versionComment || null,
-      saved_from_version: existing.version
-    }),
-    req.user?.id ?? null
-  ]
-);
+        [
+          id,
+          major,
+          minor,
+          existing.version,
+          JSON.stringify(safeJsonParse(existing.items, [])),
+          existing.subtotal,
+          existing.total_discount ?? 0,
+          existing.tax_total,
+          existing.total_value,
+          JSON.stringify({
+            comment: versionComment || null,
+            saved_from_version: existing.version
+          }),
+          req.user?.id ?? null
+        ]
+      );
 
       console.log(`Version snapshot saved: ${existing.version}`);
     }
@@ -3057,7 +3114,7 @@ if (String(newVersion) !== String(existing.version)) {
     console.error('update quotation error', err && err.message ? err.message : err);
     res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -3074,7 +3131,7 @@ async function handleApproveQuotation(req, res) {
     const requesterRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : null;
     if (requesterRole !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Only admin users can approve quotations' });
 
-    
+
     conn = await db.getConnection();
 
     const [rows] = await conn.query('SELECT * FROM quotations WHERE id = ? LIMIT 1', [id]);
@@ -3104,7 +3161,7 @@ async function handleApproveQuotation(req, res) {
     updated.quotation_no = fixYearFormat(updated.quotation_no);
 
     try {
-      
+
       const notifUUID = `notif-qt-approve-${id}-${Date.now()}`;
       const title = `Quotation ${updated.quotation_no} approved`;
       const description = `Quotation ${updated.quotation_no} approved by ${approver}`;
@@ -3134,7 +3191,7 @@ async function handleApproveQuotation(req, res) {
     console.error('approve quotation error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 }
 
@@ -3168,7 +3225,7 @@ app.post('/api/quotations/:id/won', authMiddleware, async (req, res) => {
     const requesterId = (req.user && req.user.id) ? Number(req.user.id) : null;
     const isAdmin = requesterRole === 'admin';
     const ownerId = q.salesperson_id != null ? Number(q.salesperson_id) : null;
-    
+
     if (!isAdmin && (!requesterId || ownerId !== requesterId)) {
       return res.status(403).json({ error: 'forbidden', message: 'You do not have permission to mark this quotation as won' });
     }
@@ -3225,7 +3282,7 @@ app.post('/api/quotations/:id/won', authMiddleware, async (req, res) => {
     console.error('mark won quotation error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -3311,76 +3368,76 @@ app.post('/api/quotations/:id/lost', authMiddleware, async (req, res) => {
     console.error('mark lost quotation error:', err && err.message ? err.message : err);
     return res.status(500).json({ error: 'db error', details: err && err.message });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
 // ---------- Create follow-up for a quotation ----------
 
-app.post('/api/quotations/:id/followups', authMiddleware,async (req, res) => {
+app.post('/api/quotations/:id/followups', authMiddleware, async (req, res) => {
   const quotationId = Number(req.params.id);
-    const {
-  followup_date,
-  note,
-  followup_type,
-  next_followup_date = null,
-} = req.body;
+  const {
+    followup_date,
+    note,
+    followup_type,
+    next_followup_date = null,
+  } = req.body;
 
-const ALLOWED_TYPES = [
-  "call",
-  "email",
-  "whatsapp",
-  "meeting",
-  "site_visit",
-  "other",
-];
+  const ALLOWED_TYPES = [
+    "call",
+    "email",
+    "whatsapp",
+    "meeting",
+    "site_visit",
+    "other",
+  ];
 
-if (
-  !quotationId ||
-  !followup_date ||
-  !note?.trim() ||
-  !ALLOWED_TYPES.includes(followup_type)
-) {
-  return res.status(400).json({ error: "Invalid follow-up data" });
-}
+  if (
+    !quotationId ||
+    !followup_date ||
+    !note?.trim() ||
+    !ALLOWED_TYPES.includes(followup_type)
+  ) {
+    return res.status(400).json({ error: "Invalid follow-up data" });
+  }
 
-    const userId = req.user.id;
+  const userId = req.user.id;
 
-    if (!quotationId || !followup_date || !note?.trim()) {
-      return res.status(400).json({ error: 'Invalid follow-up data' });
-    }
+  if (!quotationId || !followup_date || !note?.trim()) {
+    return res.status(400).json({ error: 'Invalid follow-up data' });
+  }
 
-    let conn;
-    try {
-      conn = await db.getConnection();
-      await conn.beginTransaction();
+  let conn;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
 
-      // 🔒 Lock quotation & validate status
-      const [[quotation]] = await conn.query(
-        `
+    // 🔒 Lock quotation & validate status
+    const [[quotation]] = await conn.query(
+      `
         SELECT id, status
         FROM quotations
         WHERE id = ?
         FOR UPDATE
         `,
-        [quotationId]
-      );
+      [quotationId]
+    );
 
-      if (!quotation) {
-        await conn.rollback();
-        return res.status(404).json({ error: 'Quotation not found' });
-      }
+    if (!quotation) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
 
-      if (quotation.status !== 'pending') {
-        await conn.rollback();
-        return res.status(409).json({
-          error: 'Follow-ups allowed only for pending quotations',
-        });
-      }
+    if (quotation.status !== 'pending') {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'Follow-ups allowed only for pending quotations',
+      });
+    }
 
-      // ✅ Insert follow-up
-      await conn.query(
-        `
+    // ✅ Insert follow-up
+    await conn.query(
+      `
         INSERT INTO quotation_followups
   (
     quotation_id,
@@ -3392,42 +3449,42 @@ if (
   )
 VALUES (?, ?, ?, ?, ?, ?)
         `,
-       [
-    quotationId,
-    userId,
-    followup_date,
-    note.trim(),
-    followup_type,
-    next_followup_date,
-  ]
-      );
+      [
+        quotationId,
+        userId,
+        followup_date,
+        note.trim(),
+        followup_type,
+        next_followup_date,
+      ]
+    );
 
-      await conn.commit();
-      res.json({ success: true });
-    } catch (err) {
-      if (conn) await conn.rollback();
-      console.error(err);
-      res.status(500).json({ error: 'Failed to create follow-up' });
-    } finally {
-      if (conn) conn.release();
-    }
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create follow-up' });
+  } finally {
+    if (conn) conn.release();
   }
+}
 );
 
 //---------------Fetch follow-ups for a quotation ----------------
 
 app.get('/api/quotations/:id/followups', authMiddleware, async (req, res) => {
   const quotationId = Number(req.params.id);
- if (!quotationId) {
-      return res.status(400).json({ error: 'Invalid quotation id' });
-    }
+  if (!quotationId) {
+    return res.status(400).json({ error: 'Invalid quotation id' });
+  }
 
-    let conn;
-    try {
-      conn = await db.getConnection();
+  let conn;
+  try {
+    conn = await db.getConnection();
 
-      const [rows] = await conn.query(
-        `
+    const [rows] = await conn.query(
+      `
         SELECT
   f.id,
   f.followup_date,
@@ -3443,33 +3500,33 @@ LEFT JOIN users u ON u.id = f.created_by
 WHERE f.quotation_id = ?
 ORDER BY f.created_at DESC
         `,
-        [quotationId]
-      );
+      [quotationId]
+    );
 
-      res.json(rows);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Failed to fetch follow-ups' });
-    } finally {
-      if (conn) conn.release();
-    }
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch follow-ups' });
+  } finally {
+    if (conn) conn.release();
   }
+}
 );
 
 //-----------complete follow-up ----------------
 
 app.put('/api/quotation-followups/:id/complete', authMiddleware, async (req, res) => {
   const id = Number(req.params.id);
-    if (!id) {
-      return res.status(400).json({ error: "Invalid follow-up id" });
-    }
+  if (!id) {
+    return res.status(400).json({ error: "Invalid follow-up id" });
+  }
 
-    let conn;
-    try {
-      conn = await db.getConnection();
+  let conn;
+  try {
+    conn = await db.getConnection();
 
-      await conn.query(
-        `
+    await conn.query(
+      `
         UPDATE quotation_followups
 SET
   is_completed = 1,
@@ -3477,17 +3534,17 @@ SET
   next_followup_date = NULL
 WHERE id = ?
         `,
-        [id]
-      );
+      [id]
+    );
 
-      res.json({ success: true });
-    } catch (err) {
-      console.error("Failed to complete follow-up:", err);
-      res.status(500).json({ error: "Failed to complete follow-up" });
-    } finally {
-      if (conn) conn.release();
-    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to complete follow-up:", err);
+    res.status(500).json({ error: "Failed to complete follow-up" });
+  } finally {
+    if (conn) conn.release();
   }
+}
 );
 
 // ---------- Delete quotation ----------
@@ -3499,7 +3556,7 @@ app.delete('/api/quotations/:id', authMiddleware, async (req, res) => {
 
   const force = String(req.query.force || '').toLowerCase() === 'true';
   try {
-    
+
     conn = await db.getConnection();
 
     const [rows] = await conn.query('SELECT id, status, salesperson_id FROM quotations WHERE id = ? LIMIT 1', [id]);
@@ -3526,7 +3583,7 @@ app.delete('/api/quotations/:id', authMiddleware, async (req, res) => {
       const affected = delRes && (delRes.affectedRows != null) ? delRes.affectedRows : 0;
 
       try {
-        
+
         const notifUUID = `notif-qt-force-delete-${id}-${Date.now()}`;
         const title = `Quotation ${id} force-deleted`;
         const description = `Quotation ${id} force-deleted by ${req.user && (req.user.name || req.user.email) ? (req.user.name || req.user.email) : 'admin'}`;
@@ -3544,7 +3601,7 @@ app.delete('/api/quotations/:id', authMiddleware, async (req, res) => {
     const [uRes] = await conn.query('UPDATE quotations SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?', [now, deleterId, id]);
 
     try {
-      
+
       const notifUUID = `notif-qt-delete-${id}-${Date.now()}`;
       const title = `Quotation ${id} deleted`;
       const description = `Quotation ${id} deleted by ${req.user && (req.user.name || req.user.email) ? (req.user.name || req.user.email) : 'user'}`;
@@ -3564,7 +3621,7 @@ app.delete('/api/quotations/:id', authMiddleware, async (req, res) => {
     });
     return res.status(500).json({ error: 'db error', details: err && err.message, code: err && err.code });
   } finally {
-    if (conn) try { await conn.release(); } catch (e) {}
+    if (conn) try { await conn.release(); } catch (e) { }
   }
 });
 
@@ -3674,15 +3731,15 @@ app.post("/api/settings/test-email", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "SMTP not configured" });
   }
 
- const transporter = nodemailer.createTransport({
-  host: settings.smtp_host,
-  port: Number(settings.smtp_port),
-  secure: Number(settings.smtp_port) === 465,
-  auth: {
-    user: settings.smtp_user,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+  const transporter = nodemailer.createTransport({
+    host: settings.smtp_host,
+    port: Number(settings.smtp_port),
+    secure: Number(settings.smtp_port) === 465,
+    auth: {
+      user: settings.smtp_user,
+      pass: process.env.SMTP_PASSWORD,
+    },
+  });
 
   await transporter.sendMail({
     from: settings.smtp_from || settings.smtp_user,
