@@ -693,6 +693,15 @@ app.post('/api/login', async (req, res) => {
         [email]
       );
     }
+    else if (username && username.toLowerCase() === 'admin') {
+      [rows] = await conn.query(
+        `SELECT id, username, email, name, password_hash, role, is_active
+     FROM users
+     WHERE email = ? AND role = 'admin'
+     LIMIT 1`,
+        [email]
+      );
+    }
     /* ================= NON-ADMIN LOGIN ================= */
     else {
       if (!USERNAME_REGEX.test(username)) {
@@ -1665,11 +1674,11 @@ app.post('/api/quotations/:id/reissue', authMiddleware, async (req, res) => {
     }
 
     // 🚫 Prevent double re-issue
-if (source.reissued_from_id) {
-  return res.status(409).json({
-    error: 'Quotation already re-issued',
-  });
-}
+    if (source.reissued_from_id) {
+      return res.status(409).json({
+        error: 'Quotation already re-issued',
+      });
+    }
 
     if (source.validity_state !== 'expired') {
       return res.status(409).json({
@@ -1719,8 +1728,8 @@ if (source.reissued_from_id) {
 
     // 🧬 Clone quotation
     // 🧬 Clone quotation (NEW quotation)
-   const [result] = await conn.query(
-  `
+    const [result] = await conn.query(
+      `
   INSERT INTO quotations (
     quotation_no,
     quotation_date,
@@ -1760,27 +1769,27 @@ if (source.reissued_from_id) {
     NOW()
   )
   `,
-  [
-    quotation_no,
-    validity_days,
-    source.customer_id,
-    source.customer_location_id,
-    source.customer_contact_id,
-    source.salesperson_id,
-    customerSnapshotJson,
-    itemsJson,
-    source.terms ?? null,
-    source.notes ?? null,
-    source.total_value ?? 0,
-    source.id
-  ]
-);
+      [
+        quotation_no,
+        validity_days,
+        source.customer_id,
+        source.customer_location_id,
+        source.customer_contact_id,
+        source.salesperson_id,
+        customerSnapshotJson,
+        itemsJson,
+        source.terms ?? null,
+        source.notes ?? null,
+        source.total_value ?? 0,
+        source.id
+      ]
+    );
 
 
     const newQuotationId = result.insertId;
 
     /* 🔒 MARK OLD QUOTATION AS REISSUED (CRITICAL) */
-   
+
 
 
     await conn.commit();
@@ -2129,7 +2138,7 @@ app.post('/api/customer-locations/:locationId/contacts', async (req, res) => {
 
     const [result] = await conn.query(
       `INSERT INTO customer_contacts
-       (customer_location_id, contact_name, phone, email, is_primary)
+       (location_id, contact_name, phone, email, is_primary)
        VALUES (?, ?, ?, ?, ?)`,
       [locationId, contact_name.trim(), phone || null, email || null, is_primary ? 1 : 0]
     );
