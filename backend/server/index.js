@@ -209,19 +209,19 @@ async function ensureUsersTable() {
 }
 
 
-async function getNextRunningNumber(conn, fyCode, initials) {
-  const prefix = `QT/${fyCode}/${initials}/`;
+async function getNextRunningNumber(conn, fyCode) {
+  const prefix = `QT/${fyCode}/%/`;
 
   const [rows] = await conn.query(
     `
     SELECT quotation_no
     FROM quotations
     WHERE quotation_no LIKE ?
-    ORDER BY id DESC
+    ORDER BY CAST(SUBSTRING_INDEX(quotation_no, '/', -1) AS UNSIGNED) DESC
     LIMIT 1
     FOR UPDATE
     `,
-    [`${prefix}%`]
+    [prefix]
   );
 
   if (!rows.length) return 1;
@@ -1213,7 +1213,7 @@ async function createServerAndIO() {
   return { httpServer, io };
 }
 
-// ---------- Create quotation (protected) ----------
+
 // ---------- Create quotation (protected) ----------
 app.post('/api/quotations', authMiddleware, async (req, res) => {
   console.log('\n==== Incoming Create Quotation Request ====');
@@ -1291,6 +1291,8 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
 
     const salesperson = userRows?.[0] || {};
 
+
+
     /* -------------------- CUSTOMER SNAPSHOT -------------------- */
 
     const [custRows] = await conn.query(
@@ -1328,6 +1330,36 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
 
     console.log('Saving customer snapshot:', snapshotJson);
 
+
+
+    /* -------------------- GENERATE QUOTATION NO -------------------- */
+    const [[sp]] = await conn.query(
+      'SELECT name FROM users WHERE id = ?',
+      [salespersonToSave]
+    );
+
+    if (!sp) {
+      throw new Error('Salesperson not found for quotation numbering');
+    }
+
+    const initials = sp.name
+      .trim()
+      .split(/\s+/)
+      .map(p => p[0])
+      .join('')
+      .toUpperCase();
+
+    const fyCode = buildFiscalYearStringForDate(dbDate || new Date());
+
+
+    const runningNo = await getNextRunningNumber(conn, fyCode);
+
+    const quotation_no =
+      `QT/${fyCode}/${initials}/${String(runningNo).padStart(3, '0')}`;
+
+
+
+
     /* -------------------- INSERT QUOTATION -------------------- */
 
     const [ins] = await conn.query(
@@ -1364,7 +1396,7 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
-        null,
+        quotation_no,
         customer_id,
         finalCustomerName,
 
@@ -1393,39 +1425,9 @@ app.post('/api/quotations', authMiddleware, async (req, res) => {
       ]
     );
 
-    /* -------------------- GENERATE QUOTATION NO -------------------- */
-    const [[sp]] = await conn.query(
-      'SELECT name FROM users WHERE id = ?',
-      [salespersonToSave]
-    );
-
-    if (!sp) {
-      throw new Error('Salesperson not found for quotation numbering');
-    }
-
-    const initials = sp.name
-      .trim()
-      .split(/\s+/)
-      .map(p => p[0])
-      .join('')
-      .toUpperCase();
-
-    const fyCode = getFinancialYearCode(
-      dbDate ? new Date(dbDate) : new Date()
-    );
-
-
-    const runningNo = await getNextRunningNumber(conn, fyCode, initials);
-
-    const quotation_no =
-      `QT/${fyCode}/${initials}/${String(runningNo).padStart(3, '0')}`;
 
     const newId = ins.insertId;
 
-    await conn.query(
-      'UPDATE quotations SET quotation_no = ? WHERE id = ?',
-      [quotation_no, newId]
-    );
     await conn.commit();
 
 
@@ -3042,6 +3044,11 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
         .split('.')
         .map(v => parseInt(v, 10) || 0);
 
+      const safeVersionComment =
+        typeof versionComment === 'string' && versionComment.trim()
+          ? versionComment.trim()
+          : null;
+
       await conn.query(
         `INSERT INTO quotation_versions (
     quotation_id,
@@ -3067,7 +3074,7 @@ app.put('/api/quotations/:id', authMiddleware, async (req, res) => {
           existing.tax_total,
           existing.total_value,
           JSON.stringify({
-            comment: versionComment || null,
+            comment: safeVersionComment,
             saved_from_version: existing.version
           }),
           req.user?.id ?? null
