@@ -23,10 +23,10 @@ type LineItem = {
   product_id: number;
   product_name: string;
   description: string;
-  qty: number;
+  qty: number | "";
   uom: string;
-  unit_price: number;
-  tax_rate: number;
+  unit_price: number | "";
+  tax_rate: number | "";
 };
 
 /* ================= STYLES ================= */
@@ -132,7 +132,7 @@ export default function CreateQuotation() {
       description: "",
       qty: 1,
       uom: "NOS",
-      unit_price: 0,
+      unit_price: "",
       tax_rate: 18,
     },
   ]);
@@ -373,9 +373,18 @@ export default function CreateQuotation() {
 
   /* ================= TOTALS ================= */
 
-  const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0);
+  const subtotal = items.reduce(
+    (s, i) => s + (Number(i.qty) || 0) * (Number(i.unit_price) || 0),
+    0
+  );
+
   const taxTotal = items.reduce(
-    (s, i) => s + (i.qty * i.unit_price * i.tax_rate) / 100,
+    (s, i) =>
+      s +
+      ((Number(i.qty) || 0) *
+        (Number(i.unit_price) || 0) *
+        (Number(i.tax_rate) || 0)) /
+      100,
     0
   );
   const grandTotal = subtotal + taxTotal;
@@ -644,24 +653,34 @@ export default function CreateQuotation() {
           email: selectedContact.email,
         },
 
-        // 🧾 ITEMS
-        items: items.map((i) => ({
-          product_id: i.product_id,
-          product_name: i.product_name,
-          description: i.description,
-          qty: i.qty,
-          uom: i.uom,
-          unit_price: i.unit_price,
-          tax_rate: i.tax_rate,
+        // 🧾 ITEMS (NORMALIZED — IMPORTANT)
+        items: items.map((i) => {
+          const qty = Number(i.qty) || 0;
+          const unitPrice = Number(i.unit_price) || 0;
+          const taxRate = Number(i.tax_rate) || 0;
 
-          taxable_amount: i.qty * i.unit_price,
-          tax_amount: (i.qty * i.unit_price * i.tax_rate) / 100,
-          total_amount:
-            i.qty * i.unit_price +
-            (i.qty * i.unit_price * i.tax_rate) / 100,
-        })),
+          const taxableAmount = qty * unitPrice;
+          const taxAmount = (taxableAmount * taxRate) / 100;
+          const totalAmount = taxableAmount + taxAmount;
 
+          return {
+            product_id: i.product_id,
+            product_name: i.product_name,
+            description: i.description,
+            qty,
+            uom: i.uom,
+            unit_price: unitPrice,
+            tax_rate: taxRate,
+
+            taxable_amount: taxableAmount,
+            tax_amount: taxAmount,
+            total_amount: totalAmount,
+          };
+        }),
+
+        // 💰 TOTAL
         total_value: grandTotal,
+
         terms,
         notes,
         status,
@@ -676,6 +695,7 @@ export default function CreateQuotation() {
       setSaving(false);
     }
   }
+
 
   // ================= ADD / EDIT CONTACT ================= //
 
@@ -1294,7 +1314,9 @@ export default function CreateQuotation() {
                         value={it.qty}
                         aria-label={`Quantity for line item ${idx + 1}`}
                         onChange={(e) =>
-                          updateItem(it.id, { qty: +e.target.value })
+                          updateItem(it.id, {
+                            qty: e.target.value === "" ? "" : Number(e.target.value),
+                          })
                         }
                         className="rounded-md border border-gray-300 px-2 py-1 text-sm w-16 focus:outline-none focus:ring-1 focus:ring-rose-400"
                       />
@@ -1317,8 +1339,11 @@ export default function CreateQuotation() {
                         value={it.unit_price}
                         aria-label={`Rate for line item ${idx + 1}`}
                         onChange={(e) =>
-                          updateItem(it.id, { unit_price: +e.target.value })
+                          updateItem(it.id, {
+                            unit_price: e.target.value === "" ? "" : Number(e.target.value),
+                          })
                         }
+
                         className={inputClass}
                       />
                     </td>
@@ -1329,14 +1354,19 @@ export default function CreateQuotation() {
                         value={it.tax_rate}
                         aria-label={`Tax rate for line item ${idx + 1}`}
                         onChange={(e) =>
-                          updateItem(it.id, { tax_rate: +e.target.value })
+                          updateItem(it.id, {
+                            tax_rate: e.target.value === "" ? "" : Number(e.target.value),
+                          })
                         }
                         className={inputClass}
                       />
                     </td>
 
                     <td className="p-2 text-right font-medium">
-                      ₹{(it.qty * it.unit_price).toLocaleString()}
+                      ₹{(
+                        (Number(it.qty) || 0) *
+                        (Number(it.unit_price) || 0)
+                      ).toLocaleString()}
                     </td>
 
                     <td className="p-2">
