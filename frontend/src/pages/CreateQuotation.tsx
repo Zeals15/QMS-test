@@ -766,13 +766,13 @@ export default function CreateQuotation() {
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-gray-200 px-6 py-5 space-y-6">
 
-              <h2 className="text-[17px] font-semibold text-gray-900">
+              <h2 className="text-[17px] font-bold text-black-900-block">
                 Customer Information
               </h2>
 
               {/* CUSTOMER */}
               <div>
-                <label className="text-[15px] font-medium text-gray-500 mb-1 block">
+                <label className="text-[15px] font-bold text-black mb-1 block">
                   CUSTOMER
                 </label>
 
@@ -878,7 +878,7 @@ export default function CreateQuotation() {
 
                 {/* ================= LOCATION COLUMN ================= */}
                 <div className="space-y-3">
-                  <label className="text-[13px] font-medium text-gray-500 block">
+                  <label className="text-[15px] font-bold text-black block">
                     LOCATION / PLANT
                   </label>
 
@@ -981,7 +981,7 @@ export default function CreateQuotation() {
 
                 {/* ================= CONTACT COLUMN ================= */}
                 <div className="space-y-3">
-                  <label className="text-[13px] font-medium text-gray-500 block">
+                  <label className="text-[15px] font-bold text-black block">
                     CONTACT PERSON
                   </label>
 
@@ -1092,7 +1092,7 @@ export default function CreateQuotation() {
               {/* DATE + VALIDITY */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[13px] font-medium text-gray-500 mb-1 block">
+                  <label className="text-[15px] font-bold text-bold-500 mb-2 block">
                     QUOTATION DATE
                   </label>
                   <div className="relative">
@@ -1122,7 +1122,7 @@ export default function CreateQuotation() {
                 </div>
 
                 <div>
-                  <label className="text-[13px] font-medium text-gray-500 mb-1 block">
+                  <label className="text-[15px] font-bold text-black-500 mb-2 block">
                     VALIDITY (DAYS)
                   </label>
                   <input
