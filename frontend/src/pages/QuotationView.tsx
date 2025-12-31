@@ -1401,37 +1401,7 @@ hr {
     }
   }, [quote]);
 
-  function sendEmail() {
-    if (!quote) return;
 
-    const to = encodeURIComponent(quote.customer_email || "");
-    const subject = encodeURIComponent(
-      `Quotation ${quote.quotation_no || quote.id}`
-    );
-    const body = encodeURIComponent(
-      `Hello,
-
-Please find the quotation attached.
-(Kindly attach the PDF before sending)
-
-Quotation Link:
-${window.location.origin}/quotations/${quote.id}
-
-Ref: ${quote.quotation_no || quote.id}
-
-Regards,`
-    );
-
-    const gmailUrl =
-      `https://mail.google.com/mail/?view=cm&fs=1` +
-      `&to=${to}` +
-      `&su=${subject}` +
-      `&body=${body}`;
-
-    window.open(gmailUrl, "_blank", "noopener,noreferrer");
-
-    setToast("Gmail compose opened");
-  }
 
 
   ///Outlook option for the mail :-
